@@ -1,0 +1,7 @@
+{
+  "name": "Калькулятор послуг та заявок",
+  "description": "Інтерактивний калькулятор пакетних та поштучних діджитал-послуг з автоматичним формуванням та збереженням заявок у Google Таблиці",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
