@@ -6,6 +6,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { getServiceCategories } from './data/services';
+import { getPopularPresets } from './data/presets';
 import {
   SelectedPackage,
   SelectedItem,
@@ -21,6 +22,7 @@ import {
   saveOrderToStorage,
   getStoredSheetsConfig,
   appendOrderToGoogleSheet,
+  isAdminUnlocked,
 } from './services/googleSheets';
 import { Header } from './components/Header';
 import { CategoryNav } from './components/CategoryNav';
@@ -32,6 +34,7 @@ import { OrderModal } from './components/OrderModal';
 import { OrderSuccessModal } from './components/OrderSuccessModal';
 import { GoogleSheetsConfigModal } from './components/GoogleSheetsConfigModal';
 import { AdminOrdersDrawer } from './components/AdminOrdersDrawer';
+import { AdminAuthModal } from './components/AdminAuthModal';
 
 export default function App() {
   // Localization State (Default UA)
@@ -40,6 +43,7 @@ export default function App() {
 
   // Dynamic Localized Categories (with 'complex' on the forefront)
   const categories = useMemo(() => getServiceCategories(language), [language]);
+  const popularPresets = useMemo(() => getPopularPresets(language), [language]);
 
   // Navigation & Filter State (Default 'complex' on the forefront)
   const [activeCategoryId, setActiveCategoryId] = useState<string>('complex');
@@ -56,6 +60,8 @@ export default function App() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
   const [isOrdersDrawerOpen, setIsOrdersDrawerOpen] = useState<boolean>(false);
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState<boolean>(false);
+  const [adminAuthTarget, setAdminAuthTarget] = useState<'orders' | 'sheets'>('orders');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Persistence & Synced Data
@@ -72,6 +78,42 @@ export default function App() {
     setIsSheetsConnected(Boolean(config.spreadsheetId || config.webhookUrl));
     setActiveSheetUrl(config.sheetUrl || '');
   }, []);
+
+  const refreshOrders = () => {
+    const orders = getStoredOrders();
+    setOrdersHistory(orders);
+    const config = getStoredSheetsConfig();
+    setIsSheetsConnected(Boolean(config.spreadsheetId || config.webhookUrl));
+    setActiveSheetUrl(config.sheetUrl || '');
+  };
+
+  // Open Handlers with Security PIN Check
+  const handleOpenOrders = () => {
+    if (isAdminUnlocked()) {
+      setIsOrdersDrawerOpen(true);
+    } else {
+      setAdminAuthTarget('orders');
+      setIsAdminAuthModalOpen(true);
+    }
+  };
+
+  const handleOpenSheetsConfig = () => {
+    if (isAdminUnlocked()) {
+      setIsSheetsModalOpen(true);
+    } else {
+      setAdminAuthTarget('sheets');
+      setIsAdminAuthModalOpen(true);
+    }
+  };
+
+  const handleAdminAuthSuccess = () => {
+    setIsAdminAuthModalOpen(false);
+    if (adminAuthTarget === 'orders') {
+      setIsOrdersDrawerOpen(true);
+    } else {
+      setIsSheetsModalOpen(true);
+    }
+  };
 
   // Total price calculation
   const totalSum = useMemo(() => {
@@ -181,7 +223,7 @@ export default function App() {
     });
   };
 
-  // Remove individual package / item from floating bar
+  // Remove Handlers
   const handleRemovePackage = (packageId: string) => {
     setSelectedPackages((prev) => prev.filter((p) => p.packageId !== packageId));
   };
@@ -196,7 +238,7 @@ export default function App() {
     setActivePresetId(null);
   };
 
-  // Apply Preset Combo
+  // Apply Popular Preset Combo
   const handleApplyPreset = (preset: PresetBundle) => {
     if (activePresetId === preset.id) {
       handleClearAll();
@@ -268,7 +310,7 @@ export default function App() {
 
     // Save to local storage first
     saveOrderToStorage(newOrder);
-    setOrdersHistory(getStoredOrders());
+    refreshOrders();
 
     // Try Google Sheets append
     try {
@@ -278,6 +320,7 @@ export default function App() {
         newOrder.status = 'synced_sheets';
         setActiveSheetUrl(sheetsRes.sheetUrl);
         setIsSheetsConnected(true);
+        refreshOrders();
       }
     } catch (e) {
       console.warn('Google Sheets sync deferred:', e);
@@ -308,30 +351,27 @@ export default function App() {
     }
     let list = activeCategory.subcategories;
 
-    // View filter
-    if (viewFilter === 'packages') {
-      list = list.filter((sub) => sub.hasPackages);
-    } else if (viewFilter === 'items') {
-      list = list.filter((sub) => sub.items && sub.items.length > 0);
-    }
-
-    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list
         .map((sub) => {
-          const titleMatch = sub.title?.toLowerCase().includes(q) || false;
-          const matchedPackages = sub.packages?.filter((p) =>
-            p.tierLabel?.toLowerCase().includes(q) ||
-            p.features?.some((f) => f?.toLowerCase().includes(q))
-          ) || [];
-          const matchedItems = (sub.items || []).filter((i) => i.name?.toLowerCase().includes(q));
+          const matchedPackages = (sub.packages || []).filter(
+            (p) =>
+              p.tierLabel.toLowerCase().includes(q) ||
+              (p.features || []).some((f) => f.toLowerCase().includes(q))
+          );
+          const matchedItems = (sub.items || []).filter(
+            (i) =>
+              i.name.toLowerCase().includes(q) ||
+              (i.description && i.description.toLowerCase().includes(q))
+          );
+          const subTitleMatched = sub.title.toLowerCase().includes(q);
 
-          if (titleMatch || matchedPackages.length > 0 || matchedItems.length > 0) {
+          if (subTitleMatched || matchedPackages.length > 0 || matchedItems.length > 0) {
             return {
               ...sub,
-              items: titleMatch ? (sub.items || []) : matchedItems,
-              packages: titleMatch ? (sub.packages || []) : matchedPackages,
+              packages: subTitleMatched ? sub.packages || [] : matchedPackages,
+              items: subTitleMatched ? sub.items || [] : matchedItems,
             };
           }
           return null;
@@ -340,13 +380,13 @@ export default function App() {
     }
 
     return list;
-  }, [activeCategory, searchQuery, viewFilter]);
+  }, [activeCategory, searchQuery]);
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden pb-28 text-slate-800 font-sans selection:bg-indigo-500/20 selection:text-indigo-950">
-      {/* Frosted Glass Ambient Glowing Orbs */}
-      <div className="fixed -top-20 -left-20 w-80 h-80 bg-pink-300/40 rounded-full blur-3xl pointer-events-none z-0"></div>
-      <div className="fixed bottom-10 right-10 w-96 h-96 bg-blue-300/40 rounded-full blur-3xl pointer-events-none z-0"></div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-100 font-sans relative overflow-x-hidden pb-32">
+      {/* Decorative frosted ambient orbs */}
+      <div className="fixed top-12 left-10 w-96 h-96 bg-pink-300/30 rounded-full blur-3xl pointer-events-none z-0"></div>
+      <div className="fixed bottom-10 right-10 w-96 h-96 bg-blue-300/30 rounded-full blur-3xl pointer-events-none z-0"></div>
       <div className="fixed top-1/2 left-1/3 w-64 h-64 bg-indigo-300/30 rounded-full blur-3xl pointer-events-none z-0"></div>
       <div className="fixed top-1/4 right-1/4 w-72 h-72 bg-purple-300/25 rounded-full blur-3xl pointer-events-none z-0"></div>
 
@@ -355,8 +395,8 @@ export default function App() {
         <Header
           language={language}
           onLanguageChange={setLanguage}
-          onOpenOrders={() => setIsOrdersDrawerOpen(true)}
-          onOpenSheetsConfig={() => setIsSheetsModalOpen(true)}
+          onOpenOrders={handleOpenOrders}
+          onOpenSheetsConfig={handleOpenSheetsConfig}
           onReset={handleClearAll}
           ordersCount={ordersHistory.length}
           isSheetsConnected={isSheetsConnected}
@@ -389,6 +429,7 @@ export default function App() {
 
           {/* Popular Preset Combos */}
           <PresetBundles
+            presets={popularPresets}
             language={language}
             onApplyPreset={handleApplyPreset}
             activePresetId={activePresetId}
@@ -478,64 +519,89 @@ export default function App() {
             </h3>
           </div>
 
-          {/* Subcategories List */}
-          <div className="space-y-6">
+          {/* Subcategories Container */}
+          <div className="space-y-8">
             {filteredSubcategories.length === 0 ? (
-              <div className="text-center py-16 bg-white/50 backdrop-blur-xl rounded-3xl border border-white/70 p-6 shadow-xs">
-                <Search className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-slate-700">{t.nothingFound}</p>
-                <p className="text-xs text-slate-500 mt-1">{t.tryChangingFilter}</p>
+              <div className="text-center py-16 px-4 bg-white/40 backdrop-blur-xl rounded-3xl border border-white/60 shadow-xs">
+                <div className="w-12 h-12 rounded-2xl bg-white/80 border border-white flex items-center justify-center mx-auto mb-3 shadow-xs text-slate-400">
+                  <Search className="w-6 h-6" />
+                </div>
+                <h4 className="text-base font-bold text-slate-800">{t.noResultsTitle}</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">{t.noResultsDesc}</p>
               </div>
             ) : (
               filteredSubcategories.map((subcat) => {
-                const hasPackagesToShow = subcat.hasPackages && subcat.packages && viewFilter !== 'items';
-                const hasItemsToShow = subcat.items && subcat.items.length > 0 && viewFilter !== 'packages';
+                const hasPackages = subcat.packages && subcat.packages.length > 0;
+                const hasItems = subcat.items && subcat.items.length > 0;
+
+                const showPackages =
+                  (viewFilter === 'all' || viewFilter === 'packages') && hasPackages;
+                const showItems =
+                  (viewFilter === 'all' || viewFilter === 'items') && hasItems;
+
+                const hasPackagesToShow = showPackages && (subcat.packages || []).length > 0;
+                const hasItemsToShow = showItems && (subcat.items || []).length > 0;
+
+                if (!hasPackagesToShow && !hasItemsToShow) return null;
 
                 return (
                   <section
                     key={subcat.id}
                     id={`subcat-${subcat.id}`}
-                    className="rounded-3xl bg-white/50 backdrop-blur-xl p-5 sm:p-7 border border-white/70 shadow-sm shadow-indigo-500/5 space-y-5"
+                    className="p-5 sm:p-7 rounded-3xl bg-white/50 backdrop-blur-xl border border-white/80 shadow-md shadow-indigo-500/5 space-y-6"
                   >
-                    {/* Subcategory Title */}
-                    <div className="border-b border-white/60 pb-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-white/70 text-indigo-700 border border-white/80 font-mono shadow-xs">
-                          {subcat.code}
-                        </span>
-                        <h4 className="text-base sm:text-lg font-bold text-slate-900">
-                          {subcat.title}
+                    {/* Subcategory title */}
+                    <div className="border-b border-white/60 pb-3.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h4 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                          <span>{subcat.title}</span>
+                          {subcat.isMonthly && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs">
+                              {t.monthlySupport}
+                            </span>
+                          )}
+                          {subcat.isTurnkey && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                              {t.turnkeyOneTime}
+                            </span>
+                          )}
                         </h4>
+                        <span className="text-xs text-slate-500">
+                          {subcat.isMonthly ? t.monthlyServiceNote : t.turnkeyServiceNote}
+                        </span>
                       </div>
-                      {subcat.description && (
-                        <p className="text-xs text-slate-600">{subcat.description}</p>
-                      )}
                     </div>
 
-                    {/* Packages Section if applicable */}
-                    {hasPackagesToShow && subcat.packages && (
+                    {/* Packages Section */}
+                    {hasPackagesToShow && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> {t.packageOffers}
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                            {t.packageOffersHeading}
                           </span>
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            {subcat.packageType === 'monthly' ? t.monthlySupport : t.turnkeyOneTime}
+                          <span className="text-[11px] text-slate-500">
+                            {subcat.isMonthly ? t.monthlyServiceDetail : t.oneTimeServiceDetail}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {(subcat.packages || []).map((pkg) => {
-                            const isSelected = selectedPackages.some((p) => p.packageId === pkg.id);
+                            const isSelected = selectedPackages.some(
+                              (p) => p.packageId === pkg.id
+                            );
                             return (
                               <PackageCard
                                 key={pkg.id}
                                 pkg={pkg}
-                                subcategoryId={subcat.id}
-                                subcategoryTitle={subcat.title}
-                                categoryTitle={activeCategory.title}
                                 isSelected={isSelected}
-                                onToggle={handleTogglePackage}
+                                onToggle={() =>
+                                  handleTogglePackage(
+                                    pkg,
+                                    subcat.id,
+                                    subcat.title,
+                                    activeCategory.title
+                                  )
+                                }
                                 language={language}
                               />
                             );
@@ -546,7 +612,7 @@ export default function App() {
 
                     {/* Individual Items Section */}
                     {hasItemsToShow && (
-                      <div className="space-y-3 pt-2">
+                      <div className="space-y-3">
                         {hasPackagesToShow && (
                           <div className="flex items-center gap-3 pt-2">
                             <div className="h-px bg-white/50 flex-1"></div>
@@ -623,7 +689,7 @@ export default function App() {
           if (activeSheetUrl) {
             window.open(activeSheetUrl, '_blank');
           } else {
-            setIsSheetsModalOpen(true);
+            handleOpenSheetsConfig();
           }
         }}
       />
@@ -631,23 +697,38 @@ export default function App() {
       {/* Google Sheets Config & Sync Modal */}
       <GoogleSheetsConfigModal
         isOpen={isSheetsModalOpen}
-        onClose={() => setIsSheetsModalOpen(false)}
+        onClose={() => {
+          setIsSheetsModalOpen(false);
+          refreshOrders();
+        }}
         isSheetsConnected={isSheetsConnected}
-        onConnectionChange={(connected) => setIsSheetsConnected(connected)}
+        onConnectionChange={(connected, sheetUrl) => {
+          setIsSheetsConnected(connected);
+          if (sheetUrl) setActiveSheetUrl(sheetUrl);
+          refreshOrders();
+        }}
         language={language}
       />
 
       {/* Admin Orders History Drawer */}
       <AdminOrdersDrawer
         isOpen={isOrdersDrawerOpen}
-        onClose={() => setIsOrdersDrawerOpen(false)}
-        orders={ordersHistory}
-        language={language}
-        onClearOrders={() => {
-          localStorage.removeItem('service_calc_orders_v1');
-          setOrdersHistory([]);
+        onClose={() => {
+          setIsOrdersDrawerOpen(false);
+          refreshOrders();
         }}
+        orders={ordersHistory}
+        onRefreshOrders={refreshOrders}
+        language={language}
         sheetUrl={activeSheetUrl}
+      />
+
+      {/* Admin Security PIN Modal */}
+      <AdminAuthModal
+        isOpen={isAdminAuthModalOpen}
+        onClose={() => setIsAdminAuthModalOpen(false)}
+        onSuccess={handleAdminAuthSuccess}
+        language={language}
       />
     </div>
   );
