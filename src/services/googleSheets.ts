@@ -8,11 +8,8 @@ export async function submitOrder(
   order: OrderSubmission
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const webhookUrl =
-      import.meta.env.VITE_ORDERS_WEBHOOK_URL ||
-      'https://script.google.com/macros/s/AKfycbyBmCKv4hZ6L6eF5YCKowHAcdU5-Iz0U89GrG9gonDNtq1ayQ1ns6-dMbpp6GMbUfg/exec';
-
-    if (!webhookUrl || webhookUrl === 'MY_ORDERS_WEBHOOK_URL') {
+    const webhookUrl = import.meta.env.VITE_ORDERS_WEBHOOK_URL;
+    if (!webhookUrl) {
       throw new Error('Webhook URL не налаштовано');
     }
 
