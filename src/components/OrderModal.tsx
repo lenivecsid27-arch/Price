@@ -4,7 +4,6 @@ import {
   User,
   Phone,
   Mail,
-  FileSpreadsheet,
   AlertCircle,
   Sparkles,
   Layers,
@@ -23,7 +22,6 @@ interface OrderModalProps {
   language: Language;
   onSubmitOrder: (orderData: Omit<OrderSubmission, 'id' | 'status'>) => Promise<void>;
   isSubmitting: boolean;
-  isSheetsConnected: boolean;
 }
 
 export const OrderModal: React.FC<OrderModalProps> = ({
@@ -35,7 +33,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   language,
   onSubmitOrder,
   isSubmitting,
-  isSheetsConnected,
 }) => {
   const [clientName, setClientName] = useState('');
   const [phone, setPhone] = useState('+380');
@@ -301,16 +298,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-2xl bg-white/60 backdrop-blur-sm border border-white/80 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm text-slate-900 transition-all outline-hidden resize-none shadow-xs"
               />
-            </div>
-
-            {/* Google Sheets info status badge */}
-            <div className="flex items-center gap-2 p-3 rounded-2xl bg-white/60 backdrop-blur-sm border border-white/70 text-xs text-indigo-900 shadow-xs">
-              <FileSpreadsheet className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>
-                {isSheetsConnected
-                  ? t.googleSheetsConnectedMsg
-                  : t.googleSheetsNotConnectedMsg}
-              </span>
             </div>
 
             {/* Submit Buttons */}

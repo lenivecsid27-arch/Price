@@ -1,9 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Sparkles,
   Search,
-  Zap,
 } from 'lucide-react';
 import { getServiceCategories } from './data/services';
 import { getPopularPresets } from './data/presets';
@@ -17,13 +16,7 @@ import {
   PresetBundle,
 } from './types';
 import { TRANSLATIONS } from './i18n/translations';
-import {
-  getStoredOrders,
-  saveOrderToStorage,
-  getStoredSheetsConfig,
-  appendOrderToGoogleSheet,
-  isAdminUnlocked,
-} from './services/googleSheets';
+import { submitOrder } from './services/googleSheets';
 import { Header } from './components/Header';
 import { CategoryNav } from './components/CategoryNav';
 import { PresetBundles } from './components/PresetBundles';
@@ -32,9 +25,6 @@ import { ItemRow } from './components/ItemRow';
 import { FloatingSummaryBar } from './components/FloatingSummaryBar';
 import { OrderModal } from './components/OrderModal';
 import { OrderSuccessModal } from './components/OrderSuccessModal';
-import { GoogleSheetsConfigModal } from './components/GoogleSheetsConfigModal';
-import { AdminOrdersDrawer } from './components/AdminOrdersDrawer';
-import { AdminAuthModal } from './components/AdminAuthModal';
 
 export default function App() {
   // Localization State (Default UA)
@@ -55,65 +45,11 @@ export default function App() {
   const [selectedPackages, setSelectedPackages] = useState<SelectedPackage[]>([]);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
 
-  // Modals & Drawers State
+  // Modals State
   const [isOrderModalOpen, setIsOrderModalOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
-  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState<boolean>(false);
-  const [isOrdersDrawerOpen, setIsOrdersDrawerOpen] = useState<boolean>(false);
-  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState<boolean>(false);
-  const [adminAuthTarget, setAdminAuthTarget] = useState<'orders' | 'sheets'>('orders');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  // Persistence & Synced Data
   const [lastSubmittedOrder, setLastSubmittedOrder] = useState<OrderSubmission | null>(null);
-  const [ordersHistory, setOrdersHistory] = useState<OrderSubmission[]>([]);
-  const [isSheetsConnected, setIsSheetsConnected] = useState<boolean>(false);
-  const [activeSheetUrl, setActiveSheetUrl] = useState<string>('');
-
-  // Initial load
-  useEffect(() => {
-    const orders = getStoredOrders();
-    setOrdersHistory(orders);
-    const config = getStoredSheetsConfig();
-    setIsSheetsConnected(Boolean(config.spreadsheetId || config.webhookUrl));
-    setActiveSheetUrl(config.sheetUrl || '');
-  }, []);
-
-  const refreshOrders = () => {
-    const orders = getStoredOrders();
-    setOrdersHistory(orders);
-    const config = getStoredSheetsConfig();
-    setIsSheetsConnected(Boolean(config.spreadsheetId || config.webhookUrl));
-    setActiveSheetUrl(config.sheetUrl || '');
-  };
-
-  // Open Handlers with Security PIN Check
-  const handleOpenOrders = () => {
-    if (isAdminUnlocked()) {
-      setIsOrdersDrawerOpen(true);
-    } else {
-      setAdminAuthTarget('orders');
-      setIsAdminAuthModalOpen(true);
-    }
-  };
-
-  const handleOpenSheetsConfig = () => {
-    if (isAdminUnlocked()) {
-      setIsSheetsModalOpen(true);
-    } else {
-      setAdminAuthTarget('sheets');
-      setIsAdminAuthModalOpen(true);
-    }
-  };
-
-  const handleAdminAuthSuccess = () => {
-    setIsAdminAuthModalOpen(false);
-    if (adminAuthTarget === 'orders') {
-      setIsOrdersDrawerOpen(true);
-    } else {
-      setIsSheetsModalOpen(true);
-    }
-  };
 
   // Total price calculation
   const totalSum = useMemo(() => {
@@ -308,36 +244,24 @@ export default function App() {
       status: 'new',
     };
 
-    // Save to local storage first
-    saveOrderToStorage(newOrder);
-    refreshOrders();
-
-    // Try Google Sheets append
-    try {
-      const sheetsRes = await appendOrderToGoogleSheet(newOrder);
-      if (sheetsRes.success && sheetsRes.sheetUrl) {
-        newOrder.sheetUrl = sheetsRes.sheetUrl;
-        newOrder.status = 'synced_sheets';
-        setActiveSheetUrl(sheetsRes.sheetUrl);
-        setIsSheetsConnected(true);
-        refreshOrders();
-      }
-    } catch (e) {
-      console.warn('Google Sheets sync deferred:', e);
-    }
-
-    setLastSubmittedOrder(newOrder);
+    const result = await submitOrder(newOrder);
     setIsSubmitting(false);
     setIsOrderModalOpen(false);
-    setIsSuccessModalOpen(true);
 
-    // Fire celebratory confetti bubbles!
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b'],
-    });
+    if (result.success) {
+      setLastSubmittedOrder(newOrder);
+      setIsSuccessModalOpen(true);
+
+      // Fire celebratory confetti bubbles!
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b'],
+      });
+    } else {
+      alert(result.error || 'Не вдалося відправити заявку. Спробуйте ще раз.');
+    }
   };
 
   // Filtered categories and subcategories based on search and view mode
@@ -395,11 +319,7 @@ export default function App() {
         <Header
           language={language}
           onLanguageChange={setLanguage}
-          onOpenOrders={handleOpenOrders}
-          onOpenSheetsConfig={handleOpenSheetsConfig}
           onReset={handleClearAll}
-          ordersCount={ordersHistory.length}
-          isSheetsConnected={isSheetsConnected}
           selectedCount={totalPositionsCount}
           totalSum={totalSum}
         />
@@ -673,7 +593,6 @@ export default function App() {
         language={language}
         onSubmitOrder={handleOrderSubmit}
         isSubmitting={isSubmitting}
-        isSheetsConnected={isSheetsConnected}
       />
 
       {/* Order Success Celebratory Modal */}
@@ -684,50 +603,6 @@ export default function App() {
           handleClearAll();
         }}
         order={lastSubmittedOrder}
-        language={language}
-        onOpenSheets={() => {
-          if (activeSheetUrl) {
-            window.open(activeSheetUrl, '_blank');
-          } else {
-            handleOpenSheetsConfig();
-          }
-        }}
-      />
-
-      {/* Google Sheets Config & Sync Modal */}
-      <GoogleSheetsConfigModal
-        isOpen={isSheetsModalOpen}
-        onClose={() => {
-          setIsSheetsModalOpen(false);
-          refreshOrders();
-        }}
-        isSheetsConnected={isSheetsConnected}
-        onConnectionChange={(connected, sheetUrl) => {
-          setIsSheetsConnected(connected);
-          if (sheetUrl) setActiveSheetUrl(sheetUrl);
-          refreshOrders();
-        }}
-        language={language}
-      />
-
-      {/* Admin Orders History Drawer */}
-      <AdminOrdersDrawer
-        isOpen={isOrdersDrawerOpen}
-        onClose={() => {
-          setIsOrdersDrawerOpen(false);
-          refreshOrders();
-        }}
-        orders={ordersHistory}
-        onRefreshOrders={refreshOrders}
-        language={language}
-        sheetUrl={activeSheetUrl}
-      />
-
-      {/* Admin Security PIN Modal */}
-      <AdminAuthModal
-        isOpen={isAdminAuthModalOpen}
-        onClose={() => setIsAdminAuthModalOpen(false)}
-        onSuccess={handleAdminAuthSuccess}
         language={language}
       />
     </div>

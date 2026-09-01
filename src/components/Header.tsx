@@ -1,16 +1,12 @@
 import React from 'react';
-import { Sparkles, FileSpreadsheet, RotateCcw, ListOrdered, CheckCircle2, ShieldAlert, Globe } from 'lucide-react';
+import { Sparkles, RotateCcw } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../i18n/translations';
 
 interface HeaderProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
-  onOpenOrders: () => void;
-  onOpenSheetsConfig: () => void;
   onReset: () => void;
-  ordersCount: number;
-  isSheetsConnected: boolean;
   selectedCount: number;
   totalSum: number;
 }
@@ -18,11 +14,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   language,
   onLanguageChange,
-  onOpenOrders,
-  onOpenSheetsConfig,
   onReset,
-  ordersCount,
-  isSheetsConnected,
   selectedCount,
   totalSum,
 }) => {
@@ -89,51 +81,12 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Google Sheets Sync Badge */}
-          <button
-            id="header-sheets-btn"
-            onClick={onOpenSheetsConfig}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-xs backdrop-blur-md border ${
-              isSheetsConnected
-                ? 'bg-emerald-500/15 text-emerald-900 border-emerald-300/60 hover:bg-emerald-500/25'
-                : 'bg-amber-500/15 text-amber-900 border-amber-300/60 hover:bg-amber-500/25'
-            }`}
-            title={t.sheetsConfigTitle}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
-            <span className="hidden md:inline">Google:</span>
-            {isSheetsConnected ? (
-              <span className="flex items-center gap-1 font-semibold text-emerald-800">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> {t.googleSheetsStatusConnected}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 font-semibold text-amber-800">
-                <ShieldAlert className="w-3 h-3 text-amber-600" /> {t.googleSheetsStatusConfigure}
-              </span>
-            )}
-          </button>
-
-          {/* Orders History Drawer Button */}
-          <button
-            id="header-orders-history-btn"
-            onClick={onOpenOrders}
-            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/70 hover:bg-white/90 backdrop-blur-md text-slate-800 border border-white/80 transition-all shadow-xs"
-          >
-            <ListOrdered className="w-3.5 h-3.5 text-slate-600" />
-            <span className="hidden sm:inline">{t.ordersHistoryBtn}</span>
-            {ordersCount > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-600 text-white shadow-xs">
-                {ordersCount}
-              </span>
-            )}
-          </button>
-
           {/* Reset button if something selected */}
           {selectedCount > 0 && (
             <button
               id="header-reset-btn"
               onClick={onReset}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/60 backdrop-blur-md transition-all shadow-xs"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/60 backdrop-blur-md transition-all shadow-xs cursor-pointer"
               title={t.clearSelectionBtn}
             >
               <RotateCcw className="w-3.5 h-3.5" />

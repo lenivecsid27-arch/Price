@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import {
   CheckCircle2,
-  FileSpreadsheet,
   Copy,
   Check,
-  ExternalLink,
 } from 'lucide-react';
 import { OrderSubmission, Language } from '../types';
 import { TRANSLATIONS } from '../i18n/translations';
@@ -13,7 +11,6 @@ interface OrderSuccessModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: OrderSubmission | null;
-  onOpenSheets: () => void;
   language: Language;
 }
 
@@ -21,7 +18,6 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   isOpen,
   onClose,
   order,
-  onOpenSheets,
   language,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -31,7 +27,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
 
   const handleCopySummary = () => {
     const text = `📋 ${t.appName.toUpperCase()} - ${t.orderModalTitle}\n` +
-      `📅 ${t.dateLabel}: ${order.date}\n` +
+      `📅 ${t.dateLabel || 'Дата'}: ${order.date}\n` +
       `👤 ${t.clientNameLabel}: ${order.clientName}\n` +
       `📞 ${t.phoneLabel}: ${order.phone}\n` +
       `✉️ ${t.emailLabel}: ${order.email}\n` +
@@ -91,27 +87,17 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
         {/* Action Buttons */}
         <div className="mt-6 space-y-2.5">
           <button
-            id="success-open-sheets-btn"
-            onClick={onOpenSheets}
-            className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all border border-emerald-400/30 cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>{t.viewInGoogleSheets}</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </button>
-
-          <button
             onClick={handleCopySummary}
-            className="w-full py-2.5 px-4 rounded-2xl bg-white/70 hover:bg-white text-slate-800 text-xs font-semibold flex items-center justify-center gap-2 transition-all border border-white/80 shadow-xs cursor-pointer"
+            className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md shadow-indigo-600/20 transition-all border border-indigo-400/30 cursor-pointer"
           >
             {copied ? (
               <>
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span className="text-emerald-700 font-bold">{t.copiedToClipboard}</span>
+                <Check className="w-4 h-4 text-white" />
+                <span className="text-white font-bold">{t.copiedToClipboard}</span>
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4 text-slate-600" />
+                <Copy className="w-4 h-4 text-white" />
                 <span>{t.copyReportSummary}</span>
               </>
             )}
