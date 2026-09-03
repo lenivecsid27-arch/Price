@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "categories": {
+      "title": "Service Categories",
+      "description": "Categories for digital services with ordering and metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "shortDesc": { "type": "string" },
+        "order": { "type": "number" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "subcategories": { "type": "array" }
+      },
+      "required": ["id", "title", "order"]
+    },
+    "services": {
+      "title": "Service Items and Packages",
+      "description": "Individual services and packages with prices, descriptions and order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "subcategoryId": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "order": { "type": "number" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "name", "price", "order"]
+    }
+  }
+}

@@ -31,6 +31,8 @@ export interface ServiceSubcategory {
   description?: string;
   hasPackages: boolean;
   packageType?: 'monthly' | 'one-time';
+  isMonthly?: boolean;
+  isTurnkey?: boolean;
   packages?: PackageOffer[];
   items: ServiceItem[];
 }

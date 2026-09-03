@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, RotateCcw } from 'lucide-react';
+import { Sparkles, RotateCcw, Lock, ShieldCheck } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../i18n/translations';
 
@@ -9,6 +9,8 @@ interface HeaderProps {
   onReset: () => void;
   selectedCount: number;
   totalSum: number;
+  onOpenAdmin: () => void;
+  isAdminAuthenticated: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   onReset,
   selectedCount,
   totalSum,
+  onOpenAdmin,
+  isAdminAuthenticated,
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -93,6 +97,25 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden md:inline">{t.clearSelectionBtn}</span>
             </button>
           )}
+
+          {/* Admin Management Lock Button */}
+          <button
+            id="header-admin-btn"
+            onClick={onOpenAdmin}
+            className={`p-2 rounded-full border transition-all cursor-pointer shadow-xs ${
+              isAdminAuthenticated
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100'
+                : 'bg-white/70 text-slate-500 border-white/80 hover:text-slate-900 hover:bg-white'
+            }`}
+            title={isAdminAuthenticated ? 'Панель керування послугами (Адміністратор)' : 'Вхід для адміністратора'}
+            aria-label="Admin"
+          >
+            {isAdminAuthenticated ? (
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            ) : (
+              <Lock className="w-3.5 h-3.5" />
+            )}
+          </button>
 
           {/* Live Mini Badge */}
           {selectedCount > 0 && (

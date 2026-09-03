@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Sparkles,
   Search,
 } from 'lucide-react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from './firebase';
 import { getServiceCategories } from './data/services';
 import { getPopularPresets } from './data/presets';
 import {
@@ -14,9 +16,16 @@ import {
   OrderSubmission,
   Language,
   PresetBundle,
+  ServiceCategory,
 } from './types';
 import { TRANSLATIONS } from './i18n/translations';
 import { submitOrder } from './services/googleSheets';
+import {
+  subscribeToFirestoreServices,
+  saveOrderToFirestore,
+  FirestoreServiceDoc,
+  FirestoreCategoryDoc,
+} from './services/firestoreServices';
 import { Header } from './components/Header';
 import { CategoryNav } from './components/CategoryNav';
 import { PresetBundles } from './components/PresetBundles';
@@ -25,14 +34,45 @@ import { ItemRow } from './components/ItemRow';
 import { FloatingSummaryBar } from './components/FloatingSummaryBar';
 import { OrderModal } from './components/OrderModal';
 import { OrderSuccessModal } from './components/OrderSuccessModal';
+import { AdminLogin } from './components/AdminLogin';
+import { AdminPanel } from './components/AdminPanel';
 
 export default function App() {
   // Localization State (Default UA)
   const [language, setLanguage] = useState<Language>('ua');
   const t = TRANSLATIONS[language];
 
-  // Dynamic Localized Categories (with 'complex' on the forefront)
-  const categories = useMemo(() => getServiceCategories(language), [language]);
+  // Dynamic Live Categories & Services from Firestore
+  const [categories, setCategories] = useState<ServiceCategory[]>(() => getServiceCategories('ua'));
+  const [rawServices, setRawServices] = useState<FirestoreServiceDoc[]>([]);
+  const [rawCategories, setRawCategories] = useState<FirestoreCategoryDoc[]>([]);
+
+  // Auth & Admin State
+  const [adminUser, setAdminUser] = useState<User | null>(null);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  // Monitor Firebase Auth state
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAdminUser(user);
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time Firestore subscription for live price/text/order updates
+  useEffect(() => {
+    const unsubscribe = subscribeToFirestoreServices(
+      language,
+      (updatedCategories, servicesList, categoriesList) => {
+        setCategories(updatedCategories);
+        setRawServices(servicesList);
+        setRawCategories(categoriesList);
+      }
+    );
+    return () => unsubscribe();
+  }, [language]);
+
   const popularPresets = useMemo(() => getPopularPresets(language), [language]);
 
   // Navigation & Filter State (Default 'complex' on the forefront)
@@ -244,30 +284,30 @@ export default function App() {
       status: 'new',
     };
 
-    const result = await submitOrder(newOrder);
+    // Save directly to Firestore orders collection for live Admin CRM tracking
+    await saveOrderToFirestore(newOrder);
+
+    // Also send via Webhook / Sheets if configured
+    await submitOrder(newOrder);
     setIsSubmitting(false);
     setIsOrderModalOpen(false);
 
-    if (result.success) {
-      setLastSubmittedOrder(newOrder);
-      setIsSuccessModalOpen(true);
+    setLastSubmittedOrder(newOrder);
+    setIsSuccessModalOpen(true);
 
-      // Fire celebratory confetti bubbles!
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b'],
-      });
-    } else {
-      alert(result.error || 'Не вдалося відправити заявку. Спробуйте ще раз.');
-    }
+    // Fire celebratory confetti bubbles!
+    confetti({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b'],
+    });
   };
 
   // Filtered categories and subcategories based on search and view mode
   const activeCategory = useMemo(() => {
-    return categories.find((c) => c.id === activeCategoryId) || categories[0];
-  }, [categories, activeCategoryId]);
+    return categories.find((c) => c.id === activeCategoryId) || categories[0] || getServiceCategories(language)[0];
+  }, [categories, activeCategoryId, language]);
 
   const filteredSubcategories = useMemo(() => {
     if (!activeCategory || !activeCategory.subcategories) {
@@ -322,6 +362,14 @@ export default function App() {
           onReset={handleClearAll}
           selectedCount={totalPositionsCount}
           totalSum={totalSum}
+          isAdminAuthenticated={!!adminUser}
+          onOpenAdmin={() => {
+            if (adminUser) {
+              setIsAdminPanelOpen(true);
+            } else {
+              setIsAdminLoginOpen(true);
+            }
+          }}
         />
 
         {/* Main Container */}
@@ -383,7 +431,7 @@ export default function App() {
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder={t.searchPlaceholder(activeCategory.title)}
+                placeholder={t.searchPlaceholder(activeCategory?.title || '')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/60 backdrop-blur-md border border-white/70 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 outline-hidden transition-all shadow-xs"
@@ -426,18 +474,20 @@ export default function App() {
           </div>
 
           {/* Active Category Header */}
-          <div className="pt-2">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider">
-                {t.sectionLabel}
-              </span>
-              <span className="text-slate-400">•</span>
-              <span className="text-xs text-slate-600 font-medium">{activeCategory.shortDesc}</span>
+          {activeCategory && (
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider">
+                  {t.sectionLabel}
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="text-xs text-slate-600 font-medium">{activeCategory.shortDesc}</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                {activeCategory.title}
+              </h3>
             </div>
-            <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              {activeCategory.title}
-            </h3>
-          </div>
+          )}
 
           {/* Subcategories Container */}
           <div className="space-y-8">
@@ -475,19 +525,21 @@ export default function App() {
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <h4 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
                           <span>{subcat.title}</span>
-                          {subcat.isMonthly && (
+                          {(subcat.isMonthly || subcat.packageType === 'monthly') && (
                             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs">
                               {t.monthlySupport}
                             </span>
                           )}
-                          {subcat.isTurnkey && (
+                          {(subcat.isTurnkey || subcat.packageType === 'one-time') && (
                             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
                               {t.turnkeyOneTime}
                             </span>
                           )}
                         </h4>
                         <span className="text-xs text-slate-500">
-                          {subcat.isMonthly ? t.monthlyServiceNote : t.turnkeyServiceNote}
+                          {subcat.isMonthly || subcat.packageType === 'monthly'
+                            ? t.monthlyServiceNote
+                            : t.turnkeyServiceNote}
                         </span>
                       </div>
                     </div>
@@ -500,7 +552,9 @@ export default function App() {
                             {t.packageOffersHeading}
                           </span>
                           <span className="text-[11px] text-slate-500">
-                            {subcat.isMonthly ? t.monthlyServiceDetail : t.oneTimeServiceDetail}
+                            {subcat.isMonthly || subcat.packageType === 'monthly'
+                              ? t.monthlyServiceDetail
+                              : t.oneTimeServiceDetail}
                           </span>
                         </div>
 
@@ -603,6 +657,24 @@ export default function App() {
           handleClearAll();
         }}
         order={lastSubmittedOrder}
+        language={language}
+      />
+
+      {/* Admin Login Modal (Firebase Auth) */}
+      <AdminLogin
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onSuccess={() => {
+          setIsAdminLoginOpen(false);
+          setIsAdminPanelOpen(true);
+        }}
+        language={language}
+      />
+
+      {/* Admin Leads & Orders CRM Panel */}
+      <AdminPanel
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
         language={language}
       />
     </div>
